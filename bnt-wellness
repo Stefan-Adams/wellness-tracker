@@ -1,0 +1,109 @@
+package Group;
+use Mad::Mapper -base;
+
+  pk 'id';
+  col user_id => sub {die};
+  col name => '';
+
+package User;
+use Mad::Mapper -base;
+
+  pk 'id';
+  col email => '';
+  col name  => '';
+
+  has_many groups => 'Group' => 'user_id';
+
+package Text::Random;
+use Mojo::Base -base;
+use v5.20;
+use feature qw(signatures);
+no warnings qw(experimental::signatures);
+
+  use Digest::MD5 'md5_hex';
+
+  has len => 8;
+
+  sub gen ($self) { substr(md5_hex(scalar localtime),int(rand(32-$self->len)),$self->len) }
+
+package main;
+
+  use Mojolicious::Lite;
+  use Mojo::SQLite;
+
+  plugin 'Config';
+  
+  helper tr => sub { Text::Random->new(len => 14) };
+
+  # create a helper method which makes it easy to
+  # access your models
+  helper sqlite => sub { state $sqlite = Mojo::SQLite->new('file:'.shift->config('sqlite')) };
+  helper model => sub {
+    my $c = shift;
+    my $model = 'BNT::Wellness::Model::'.shift;
+    Mojo::Loader::load_class($model);
+    return $model->new(db => $c->sqlite->db, @_);
+  };
+
+  # Migrate to latest version if necessary
+  my $path = app->home->rel_file('migrations/bnt_wellness.sql');
+  app->sqlite->migrations->name('bnt_wellness')->from_file($path)->migrate;
+
+  get '/' => 'index';
+
+  # render a user profile page
+  get "/profile" => sub {
+    my $c    = shift;
+    $c->render_later;
+    my $user = $c->model(User => id => $c->session('uid'));
+
+    $c->delay(
+      sub {
+        my ($delay) = @_;
+        $user->load($delay->begin);
+      },
+      sub {
+        my ($delay, $err) = @_;
+        return $c->render_exception($err) if $err;
+        return $c->render(user => $user);
+      },
+    );
+  };
+
+  # update the MyApp::Model::User model
+  post "/profile" => sub {
+    my $c    = shift;
+    $c->render_later;
+    my $user = $c->model('User' => id => $c->session('uid'));
+    $c->delay(
+      sub {
+        my ($delay) = @_;
+        $user->load($delay->begin);
+      },
+      sub {
+        my ($delay, $err) = @_;
+        return $c->render_exception($err) if $err;
+        $user->email($c->param("email"));
+        $user->save($delay->begin);
+      },
+      sub {
+        my ($delay, $err) = @_;
+        return $c->render_exception($err) if $err;
+        $c->session(uid => $user->id);
+        return $c->render(user => $user);
+      },
+    );
+  };
+
+  app->start;
+
+__DATA__
+@@ index.html.ep
+<%= session 'uid' %>
+%= form_for 'profile' => begin
+%= text_field 'email'
+%= submit_button
+% end
+
+@@ profile.html.ep
+<%= session 'uid' %> -=- <%= $user->id %> -=- <%= $user->email %>
