@@ -1,11 +1,11 @@
 <h1>Reports</h1>
 % use Statistics::Basic qw(average);
-% my $weights1 = $measurements->fetch($c->period1 => 'weight');
-% warn average(map { $_->first->v } values %{$weights1->group_by('uid')});
-% warn average(map { $_->last->v } values %{$weights1->group_by('uid')});
-% my $weights2 = $measurements->fetch($c->period2 => 'weight');
-% warn average(map { $_->first->v } values %{$weights2->group_by('uid')});
-% warn average(map { $_->last->v } values %{$weights2->group_by('uid')});
 
-Adequate Exercise <%= join "\t", map { $surveys->fetch($_ => '1')->ideal_survey_results('0011') } $c->period1, $c->period2 %>
-Think Normal Weight <%= join "\t", map { $surveys->fetch($_ => '6')->ideal_survey_results('010') } $c->period1, $c->period2 %>
+%#Adequate Exercise <%= join "\t", map { $surveys->fetch(1 => $_)->ideal_survey_results('0011') } $c->period1, $c->period2 %>
+%#Think Normal Weight <%= join "\t", map { $surveys->fetch(6 => $_)->ideal_survey_results('010') } $c->period1, $c->period2 %>
+
+Still need to extract only those participants in period1 and in period2 <-- SQL??
+% warn average($measurements->first(weight => $c->period1)->map('v')->each);
+% warn average($measurements->last(weight => $c->period2)->map('v')->each);
+% warn average($measurements->first(bmi => $c->period1)->map('v')->each);
+% warn average($measurements->last(bmi => $c->period2)->map('v')->each);

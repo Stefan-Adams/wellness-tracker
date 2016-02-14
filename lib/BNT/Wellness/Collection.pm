@@ -1,3 +1,17 @@
+package BNT::Wellness::Collection::group_by;
+use Mojo::Base -base;
+
+has [qw(pk collection)];
+
+sub AUTOLOAD {
+  my $self = shift;
+  my ($package, $method) = our $AUTOLOAD =~ /^(.+)::(.+)$/;
+  $self->collection->$method(@_);
+}
+
+#sub first { shift->collection->first }
+#sub last { shift->collection->last }
+
 package BNT::Wellness::Collection;
 use Mojo::Base 'Mojo::Collection';
 
@@ -23,6 +37,8 @@ sub within_periods {
   $grep;
 }
 
+sub pk { my ($self, $pk) = @_; $self->grep(sub{$_->pk eq $pk})->first }
+
 sub participant {
   my ($self, $name) = @_;
   $self->grep(sub{$_->Participant =~ $name});
@@ -34,12 +50,20 @@ sub ideal_survey_results {
   $tally / $self->size;
 }
 
+#% warn $measurements->fetch(weight => $c->period1)->group_by('uid')->pk('89295')->first;
+#% warn $measurements->fetch(weight => $c->period1)->group_by('uid')->pk('89295')->last;
+#% warn $measurements->fetch(weight => $c->period1)->group_by('uid')->first->last;
 sub group_by {
-  my ($self, $key) = @_;
-  die "group_by missing required key" unless $key;
+  my ($self, @key) = @_;
+  return $self unless $key[0];
 
-  %_ = map { my $uid = $_; {$uid => $self->grep(sub{$_->uid eq $uid})->datesort} } $self->map('uid')->uniq->each;
-  \%_;
+  my $key = shift @key;
+  my $package = join '::', __PACKAGE__, 'group_by';
+  BNT::Wellness::Collection->new(map { my $pk = $_; $package->new(pk => $pk, collection => $self->grep(sub{$_->$key eq $pk})->datesort) } $self->map(sub{$_->$key})->uniq->each)->group_by('', @key);
+  #\%_;
+
+  #%_ = map { my $uid = $_; {$uid => $self->grep(sub{$_->uid eq $uid})->datesort} } $self->map('uid')->uniq->each;
+  #\%_;
 #warn Data::Dumper::Dumper(\%_);
 }
 
