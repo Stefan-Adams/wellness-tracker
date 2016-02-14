@@ -53,46 +53,10 @@ sub clear_all {
   return $self->sqlite->db->query("delete from $table");
 }
 
-sub Import {
-  my ($self, $row) = @_;
+sub add {
+  my $self = shift;
   my $table = $self->table;
-  # TODO: move this to a function or method
-  my %cols;
-  foreach ( @{$self->config->{col}} ) {
-    if ( !ref || ref eq 'ARRAY' ) {
-      foreach my $col ( ref ? @$_ : $_ ) {
-        $cols{$_} = $row->{$_};
-      }
-    } elsif ( ref eq 'HASH' ) {
-      foreach my $col ( keys %$_ ) {
-        $cols{$_->{$col}} = $row->{$col};
-      }
-    }
-  }
-  $self->sqlite->db->query($self->sql->insert($table, {%cols}));
-}
-
-# Is given a full row of data
-# Adds multiple records to the database, one record per field of data given.  uid and date are repeated per record.  A record type is set and its value.
-sub Import_kv {
-  my ($self, $row) = @_;
-  my $table = $self->table;
-  # TODO: move this to a function or method
-  my %cols;
-  foreach ( @{$self->config->{col}} ) {
-    if ( !ref || ref eq 'ARRAY' ) {
-      foreach my $col ( ref ? @$_ : $_ ) {
-        $cols{$_} = $row->{$_};
-      }
-    } elsif ( ref eq 'HASH' ) {
-      foreach my $col ( keys %$_ ) {
-        $cols{$_->{$col}} = $row->{$col};
-      }
-    }
-  }
-  foreach my $kv ( grep { $row->{$_} } @{$self->config->{kv}} ) {
-    $self->sqlite->db->query($self->sql->insert($table, {%cols, k => $kv, v => $row->{$kv}}));
-  }
+  #return $self->sqlite->db->query("insert into $table ...");
 }
 
 # "first" and "last" (based on date) value for each uid

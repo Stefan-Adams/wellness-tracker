@@ -20,15 +20,47 @@ sub run {
     my $file = ((grep { /(^|\s*-\s*)$table\.tsv$/ } @{$self->app->home->list_files('import')})[0]);
     $file = $self->app->home->rel_file("import/$file");
     my ($conf_file) = ($file =~ /^(.+)\.[^\.]+$/);
+    my $config = $self->load($conf_file);
     my $rows = _slurp($file);
     my $model = "BNT::Wellness::Model::$table";
     Mojo::Loader::load_class($model);
-    $model = $model->new(sqlite => $self->app->sqlite, conf => $self->load($conf_file));
+    $model = $model->new(sqlite => $self->app->sqlite, config => $config);
     $model->clear_all or next;
-    $model->Import($_) foreach @$rows;
+    $self->Import($model => $_) foreach @$rows;
   }
 }
 
+sub Import {
+  my ($self, $model, $row, $config) = @_;
+
+  my $table = $model->table;
+
+  my %cols;
+  foreach ( @{$self->config->{col}} ) {
+    if ( !ref || ref eq 'ARRAY' ) {
+      foreach my $col ( ref ? @$_ : $_ ) {
+        $cols{$_} = $row->{$_};
+      }
+    } elsif ( ref eq 'HASH' ) {
+      foreach my $col ( keys %$_ ) {
+        $cols{$_->{$col}} = $row->{$col};
+      }
+    }  
+  }    
+
+  if ( $config && $config->{kv} ) {
+    # Is given a full row of data
+    # Adds multiple records to the database, one record per field of data given.  uid and date are repeated per record.  A record type is set and its value.
+    foreach my $kv ( grep { $row->{$_} } @{$self->config->{kv}} ) {
+      # $model->add
+      #$self->sqlite->db->query($self->sql->insert($table, {%cols, k => $kv, v => $row->{$kv}}));
+    }
+  } else {
+    # $model->add
+    #$self->sqlite->db->query($self->sql->insert($table, {%cols}));
+  }    
+}
+ 
 sub load {
   my ($self, $file) = @_;
   $app->log->debug(qq{Reading configuration file "$file"});

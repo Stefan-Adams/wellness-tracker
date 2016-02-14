@@ -3,7 +3,6 @@ use BNT::Wellness::Model -base;
 
 col [qw(uid date k v)];
 
-sub Import { shift->Import_kv(@_) }
 sub first { shift->_first_or_last_kv(min => @_) }
 sub last { shift->_first_or_last_kv(max => @_) }
 
