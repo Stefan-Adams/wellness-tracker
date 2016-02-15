@@ -6,6 +6,7 @@ sub register {
 
   my $r = $app->routes;
   $r->get('/' => sub { shift->redirect_to('reports') });
+  $r->post('/admin/period/current')->to('period#current'); # Sets date1, date2 in database#config#period as date1~date2
   $r->get('/reports')->to('reports#index');
   #$r->get('/' => sub { shift->redirect_to('posts') });
   #$r->get('/posts')->to('posts#index');

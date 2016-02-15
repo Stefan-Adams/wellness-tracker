@@ -9,14 +9,14 @@ use BNT::Wellness::Model::GenericRecord;
 use SQL::Abstract;
 use SQL::Interp;
 
-has 'config'; # Used only by Import routines
+has 'config'; # *::Model::Config, which has access to app's config
 has 'sqlite';
 has sql => sub { SQL::Abstract->new };
 sub sql_interp { SQL::Interp::sql_interp(@_) }
 
 ##################
 
-my (%COLUMNS);
+my (%COLUMNS, %LOADED, %PK);
 
 sub import {
   my $class = shift;
@@ -32,9 +32,10 @@ sub import {
     my $caller = caller;
     my $table = Mojo::Util::decamelize((split /::/, $caller)[-1]);
     $table =~ s!s?$!s!;    # user => users
-    Mojo::Util::monkey_patch($caller, col => sub { $caller->_define_col(@_) });
+    Mojo::Util::monkey_patch($caller, col      => sub { $caller->_define_col(@_) });
     Mojo::Util::monkey_patch($caller, columns  => sub { @{$COLUMNS{$caller} || []} });
-    Mojo::Util::monkey_patch($caller, table => sub { $table = $_[0] unless UNIVERSAL::isa($_[0], $caller); $table });
+    Mojo::Util::monkey_patch($caller, table    => sub { $table = $_[0] unless UNIVERSAL::isa($_[0], $caller); $table });
+    Mojo::Util::monkey_patch($caller, pk       => sub { return UNIVERSAL::isa($_[0], $caller) ? $PK{$caller} : $caller->_define_pk(@_) });
     no strict 'refs';
     push @{"${caller}::ISA"}, $flag;
   }
@@ -46,6 +47,12 @@ sub _define_col {
   push @{$COLUMNS{$class}}, ref $_[0] eq 'ARRAY' ? @{$_[1]} : $_[1];
   Mojo::Base::attr(@_);
 }
+sub _define_pk {
+  my $class = ref($_[0]) || $_[0];
+  $PK{$class} = $_[1];
+  Mojo::Base::attr(@_);
+}
+sub _pk_or_first_column { $_[0]->pk || ($_[0]->columns)[0] }
 
 sub clear_all {
   my $self = shift;
@@ -55,8 +62,9 @@ sub clear_all {
 
 sub add {
   my $self = shift;
-  my $table = $self->table;
-  #return $self->sqlite->db->query("insert into $table ...");
+  my $data = shift;
+  die "no record data provided to add" unless $data && ref $data eq 'HASH';
+  return $self->sqlite->db->query($self->sql->insert($self->table, $data));
 }
 
 # "first" and "last" (based on date) value for each uid
@@ -70,35 +78,31 @@ sub add {
 
 # Grab each uid's first $measurement from the group by
 sub _first_or_last_kv {
-  my ($self, $agg, $type, $period) = @_;
-  die unless $type;
+  my ($self, $agg, $k, $period) = @_;
+  die unless $k;
   my $table = $self->table;
+  my $period ||= $self->config->current_period;
   my $results;
-  if ( $type eq 'bmi' ) {
-    # Need to move this to the specific Model
-    if ( $period ) {
-      $results = $self->sqlite->db->query(qq[select *,((weight*703)/(height*height)) v from (select uid,last_name,first_name,$agg(date) date,v weight from measurements left join participants using (uid) where k='weight' and date >= '2015-02-01' and date < '2015-04-30' group by uid order by last_name) a left join (select uid,$agg(date) date,v height from measurements left join participants using (uid) where k='height' and date >= '2015-02-01' and date < '2015-04-30' group by uid order by last_name) b using (uid)]);
-    } else {
-      $results = $self->sqlite->db->query(qq[select *,((weight*703)/(height*height)) v from (select uid,last_name,first_name,$agg(date) date,v weight from measurements left join participants using (uid) where k='weight' group by uid order by last_name) a left join (select uid,$agg(date) date,v height from measurements left join participants using (uid) where k='height' group by uid order by last_name) b using (uid)]);
-    }
+  my $method = "_first_or_last_kv_$type";
+  if ( $self->can($method) ) {
+    $results = $self->sqlite->db->query($self->$method($agg, $table, $k, $period));
   } else {
-    if ( $period ) {
-      $results = $self->sqlite->db->query(qq[select uid,last_name,first_name,$agg(date) date,v from $table left join participants using (uid) where k = ? and date >= ? and date < ? group by uid order by last_name], $type, $period->start, $period->end);
-    } else {
-      $results = $self->sqlite->db->query(qq[select uid,last_name,first_name,$agg(date) date,v from $table left join participants using (uid) where k = ? group by uid order by last_name], $type);
-    }
+    $results = $self->sqlite->db->query(qq[select uid,last_name,first_name,$agg(date) date,v,'v' as '""' from $table left join participants using (uid) where k = ? and date >= ? and date < ? group by uid order by last_name], $k, $period->start, $period->end);
   }
   $self->_hashes_to_objects($results->hashes);
 }
 
-##################
-
 # Makes each row of data a BNT::Wellness::Model::GenericRecord object
+# The stringify form of the object is determined by the '""' hashkey from the SQL statement
+#   e.g.  select *,'uid' as '""'
+# Would make access to the object as a string via the 'uid' method.
 sub _hashes_to_objects {
   my $self = shift;
   my $hashes = shift;
   BNT::Wellness::Collection->new($hashes->map(sub{$_ = BNT::Wellness::Model::GenericRecord->new($_)})->each);
 } 
+
+##################
 
 # Does not support arbitrary grouping depth.  How do to so?
 sub _grouped_hash {

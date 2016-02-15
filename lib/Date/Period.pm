@@ -7,9 +7,11 @@ has [qw(start end)];
 
 sub new {
   my $self = shift->SUPER::new;
-  die "Incomplete date range\n" unless $_[0]->[0] && $_[0]->[1];
-  $self->start(date($_[0]->[0]));
-  $self->end(date($_[0]->[1]));
+  my $period = shift;
+  my ($start, $end) = @$period;
+  die "Incomplete date range\n" unless $start && $end;
+  $self->start(date($start));
+  $self->end(date($end));
 }
 
 1;

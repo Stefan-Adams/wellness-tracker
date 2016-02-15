@@ -10,8 +10,10 @@ use File::Basename;
 use Text::CSV;
 use Lingua::EN::Inflect::Number 'to_S';
 
-has description => 'import data from CSV files';
+has description => 'empty table and import data from CSV files';
 has usage => sub { shift->extract_usage };
+
+has 'config';
 
 sub run {
   my $self = shift;
@@ -20,20 +22,15 @@ sub run {
     my $file = ((grep { /(^|\s*-\s*)$table\.tsv$/ } @{$self->app->home->list_files('import')})[0]);
     $file = $self->app->home->rel_file("import/$file");
     my ($conf_file) = ($file =~ /^(.+)\.[^\.]+$/);
-    my $config = $self->load($conf_file);
+    $self->config($self->load($conf_file));
+    $self->app->model($table)->clear_all or next;
     my $rows = _slurp($file);
-    my $model = "BNT::Wellness::Model::$table";
-    Mojo::Loader::load_class($model);
-    $model = $model->new(sqlite => $self->app->sqlite, config => $config);
-    $model->clear_all or next;
-    $self->Import($model => $_) foreach @$rows;
+    $self->_import_record($_ => $table) foreach @$rows;
   }
 }
 
-sub Import {
-  my ($self, $model, $row, $config) = @_;
-
-  my $table = $model->table;
+sub _import_record {
+  my ($self, $row, $table) = @_;
 
   my %cols;
   foreach ( @{$self->config->{col}} ) {
@@ -48,17 +45,15 @@ sub Import {
     }  
   }    
 
-  if ( $config && $config->{kv} ) {
+  if ( $self->config && $self->config->{kv} ) {
     # Is given a full row of data
     # Adds multiple records to the database, one record per field of data given.  uid and date are repeated per record.  A record type is set and its value.
     foreach my $kv ( grep { $row->{$_} } @{$self->config->{kv}} ) {
-      # $model->add
-      #$self->sqlite->db->query($self->sql->insert($table, {%cols, k => $kv, v => $row->{$kv}}));
+      $self->app->model($table)->add({%cols, k => $kv, v => $row->{$kv}});
     }
   } else {
-    # $model->add
-    #$self->sqlite->db->query($self->sql->insert($table, {%cols}));
-  }    
+    $self->app->model($table)->add(\%cols);
+  }
 }
  
 sub load {

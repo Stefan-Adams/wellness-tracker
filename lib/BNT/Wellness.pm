@@ -12,7 +12,7 @@ sub startup {
   $self->plugin('Namespaces');
   $self->plugin('DB');
   $self->plugin('Routes');
-  $self->plugin('DatePeriod' => ['2015', '2016']);
+  #$self->plugin('DatePeriod');
 }
 
 1;
