@@ -1,17 +1,18 @@
 package BNT::Wellness::Model;
 use Mojo::Base -base;
 
-use Mojo::Collection;
+use Mojo::Loader 'data_section';
 
 use BNT::Wellness::Collection;
 use BNT::Wellness::Model::GenericRecord;
 
-use SQL::Abstract;
-use SQL::Interp;
-
 has 'config'; # *::Model::Config, which has access to app's config
 has 'sqlite';
-has sql => sub { SQL::Abstract->new };
+has bind => sub { [] };
+
+use SQL::Abstract;
+use SQL::Interp;
+has sql_abstract => sub { SQL::Abstract->new };
 sub sql_interp { SQL::Interp::sql_interp(@_) }
 
 ##################
@@ -54,6 +55,8 @@ sub _define_pk {
 }
 sub _pk_or_first_column { $_[0]->pk || ($_[0]->columns)[0] }
 
+##################
+
 sub clear_all {
   my $self = shift;
   my $table = $self->table;
@@ -67,42 +70,32 @@ sub add {
   return $self->sqlite->db->query($self->sql->insert($self->table, $data));
 }
 
-# "first" and "last" (based on date) value for each uid
-
-# These are the primary fetching routines for Measurements.
-# Everything uses a group by uid and a max/min (last/first) aggregate on date and returns the specific measurement requested.
-# Limits the results to a specific period, if requested.
-
-# TODO: How to better handle all the SQL here?  There's a lot of repetition.
-# Oh well.  Move on.  Abstract later.
-
-# Grab each uid's first $measurement from the group by
-sub _first_or_last_kv {
-  my ($self, $agg, $k, $period) = @_;
-  die unless $k;
-  my $table = $self->table;
-  my $period ||= $self->config->current_period;
-  my $results;
-  my $method = "_first_or_last_kv_$type";
-  if ( $self->can($method) ) {
-    $results = $self->sqlite->db->query($self->$method($agg, $table, $k, $period));
-  } else {
-    $results = $self->sqlite->db->query(qq[select uid,last_name,first_name,$agg(date) date,v,'v' as '""' from $table left join participants using (uid) where k = ? and date >= ? and date < ? group by uid order by last_name], $k, $period->start, $period->end);
-  }
+sub fetch {
+  my ($self, $measurement, $period, $where) = @_;
+  die unless $measurement;
+  $where ||= {};
+  $where->{date} = [-and => {'>=' => $period->start}, {'<' => $period->end}];
+  my $results = $self->sqlite->db->query($self->sql->select('measurements', [qw(uid date v)], {k => $measurement, %$where}, [qw(uid date)]));
   $self->_hashes_to_objects($results->hashes);
 }
 
-# Makes each row of data a BNT::Wellness::Model::GenericRecord object
-# The stringify form of the object is determined by the '""' hashkey from the SQL statement
-#   e.g.  select *,'uid' as '""'
-# Would make access to the object as a string via the 'uid' method.
-sub _hashes_to_objects {
+sub AUTOLOAD {
   my $self = shift;
-  my $hashes = shift;
-  BNT::Wellness::Collection->new($hashes->map(sub{$_ = BNT::Wellness::Model::GenericRecord->new($_)})->each);
-} 
+  my ($package, $method) = our $AUTOLOAD =~ /^(.+)::(.+)$/;
+  $self->_sql_from_data($method, @_);
+}
+
+sub _sql_from_data {
+  my ($self, $name, %args) = @_;
+  $args{table} ||= $self->table;
+  my $query = BNT::Wellness::Model::query->new(table => $self->table);
+  $query->sql(Mojo::Template->new->name("template $name from DATA section")->render(data_section(ref $self, $name), table => $self->table, %args, query => $query));
+  return $self->sqlite->db->query($query->generate);
+}
 
 ##################
+
+use Mojo::Collection;
 
 # Does not support arbitrary grouping depth.  How do to so?
 sub _grouped_hash {
@@ -115,6 +108,7 @@ sub _grouped_hash {
 }
 
 # Cool little recursion sub, not sure about the value of it. 
+#_nested_collection(_grouped_hash($results));
 sub _nested_collection {
   my $hash = shift;
   return $hash unless ref $hash eq 'HASH';
@@ -124,5 +118,12 @@ sub _nested_collection {
   }
   $c;
 }
+
+package BNT::Wellness::Model::query;
+use Mojo::Base -base;
+
+has sql => '';
+has bind => sub { [] };
+sub generate ($self) { $self->sql, @{$self->bind} } 
 
 1;

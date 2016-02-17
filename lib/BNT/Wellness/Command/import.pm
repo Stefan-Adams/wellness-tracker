@@ -18,19 +18,21 @@ has 'config';
 sub run {
   my $self = shift;
 
-  foreach my $table ( @_ ) {
-    my $file = ((grep { /(^|\s*-\s*)$table\.tsv$/ } @{$self->app->home->list_files('import')})[0]);
+  foreach my $model ( @_ ) {
+    my $file = ((grep { /(^|\s*-\s*)$model\.tsv$/ } @{$self->app->home->list_files('import')})[0]);
     $file = $self->app->home->rel_file("import/$file");
     my ($conf_file) = ($file =~ /^(.+)\.[^\.]+$/);
     $self->config($self->load($conf_file));
-    $self->app->model($table)->clear_all or next;
+    $model = lc($model);
+    $model = $file =~ /\bkv\b/i ? $self->app->db->kv($model) : $self->app->db->$model;
+    $model->reset_db or next;
     my $rows = _slurp($file);
-    $self->_import_record($_ => $table) foreach @$rows;
+    $self->_import_record($_ => $model) foreach @$rows;
   }
 }
 
 sub _import_record {
-  my ($self, $row, $table) = @_;
+  my ($self, $row, $model) = @_;
 
   my %cols;
   foreach ( @{$self->config->{col}} ) {
@@ -49,10 +51,10 @@ sub _import_record {
     # Is given a full row of data
     # Adds multiple records to the database, one record per field of data given.  uid and date are repeated per record.  A record type is set and its value.
     foreach my $kv ( grep { $row->{$_} } @{$self->config->{kv}} ) {
-      $self->app->model($table)->add({%cols, k => $kv, v => $row->{$kv}});
+      $model->add({%cols, k => $kv, v => $row->{$kv}});
     }
   } else {
-    $self->app->model($table)->add(\%cols);
+    $model->add(\%cols);
   }
 }
  
@@ -77,10 +79,10 @@ sub parse {
 
 sub _slurp {
   my $file = shift;
-  my $table = basename $file;
-  $table =~ s/.*? - (.*?)\.tsv/$1/;
-  $table =~ s/ /_/g;
-  warn "Loading	Importing $table...\n";
+  my $model = basename $file;
+  $model =~ s/.*? - (.*?)\.tsv/$1/;
+  $model =~ s/ /_/g;
+  warn "Loading	Importing $model...\n";
   my $csv = Text::CSV->new ( { binary => 1, sep_char => "\t" } )  # should set binary attribute.
                   or die "Cannot use CSV: ".Text::CSV->error_diag ();
 
@@ -102,7 +104,7 @@ sub _slurp {
   }
   $csv->eof or $csv->error_diag();
   close $fh;
-  return $table, \@rows;
+  return $model, \@rows;
 }
 
 1;

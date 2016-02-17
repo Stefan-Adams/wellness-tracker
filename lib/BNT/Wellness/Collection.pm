@@ -12,11 +12,56 @@ sub AUTOLOAD {
 #sub first { shift->collection->first }
 #sub last { shift->collection->last }
 
+package BNT::Wellness::Collection::Objectify;
+use Mojo::Base -base;
+
+use 5.020;
+use features qw(signatures);
+
+# This Model stringifies to the method defined by the '""' stringify hashkey and converts anything that looks like a date to a Date::Simple
+# If no stringify method is provided, the stringified form of the object returns the number of keys
+# Every key that it is given it makes accessible as an attribute
+# TODO: better date detection
+
+use Date::Simple;
+
+use overload '""' => sub ($self) { my $method = $self->stringify; $method && $self->can($method) ? $self->$method : keys %$self }, fallback => 1;
+
+has 'stringify';
+
+sub new {
+  my $self = shift->SUPER::new;
+  local %_ = %{+shift};
+  $_ and $self->stringify($_) for delete $_{'""'};
+  foreach ( keys %_ ) {
+    has $_;
+    next unless length $_{$_};
+    $_{$_} = sub { Date::Simple->new($_{$_}) } if $_{$_} =~ /^\d{2,4}\W\d{2}\W\d{2,4}$/;
+    $self->$_($_{$_});
+  }
+  $self;
+}
+
 package BNT::Wellness::Collection;
 use Mojo::Base 'Mojo::Collection';
 
 use Date::Simple 'date';
 use Date::Range;
+
+has 'stringify';
+
+# Makes each row of data a BNT::Wellness::Collection::GenericRecord object
+# The stringify form of the object is determined by the '""' hashkey from the SQL statement
+#   e.g.  select *,'uid' as '""'
+# Would make access to the object as a string via the 'uid' method.
+sub objectify {
+  my $self = shift;
+  my $collection = shift;
+  if ( ref $collection->isa('Mojo::Collection') ) {
+    my $record = "${package}::Objectify";
+    return $self->new(@$self, $collection->map(sub{$_ = $record->new({@_, stringify => $self->stringify, %$_})})->each);
+  }
+}
 
 sub item { shift->slice(shift)->first }
 sub shift { shift @{$_[0]} }

@@ -12,7 +12,6 @@ sub startup {
   $self->plugin('Namespaces');
   $self->plugin('DB');
   $self->plugin('Routes');
-  #$self->plugin('DatePeriod');
 }
 
 1;
