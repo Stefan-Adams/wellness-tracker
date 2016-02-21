@@ -57,11 +57,11 @@ sub _pk_or_first_column { $_[0]->pk || ($_[0]->columns)[0] }
 
 ##################
 
-sub clear_all {
-  my $self = shift;
-  my $table = $self->table;
-  return $self->sqlite->db->query("delete from $table");
-}
+#sub clear_all {
+#  my $self = shift;
+#  my $table = $self->table;
+#  return $self->sqlite->db->query("delete from $table");
+#}
 
 sub add {
   my $self = shift;
@@ -89,7 +89,7 @@ sub _sql_from_data {
   my ($self, $name, %args) = @_;
   $args{table} ||= $self->table;
   my $query = BNT::Wellness::Model::query->new(table => $self->table);
-  $query->sql(Mojo::Template->new->name("template $name from DATA section")->render(data_section(ref $self, $name), table => $self->table, %args, query => $query));
+  $query->sql(Mojo::Template->new->name("template $name from ${\(ref $self)} DATA section")->render(data_section(ref $self, $name), table => $self->table, %args, query => $query));
   return $self->sqlite->db->query($query->generate);
 }
 
@@ -127,3 +127,7 @@ has bind => sub { [] };
 sub generate ($self) { $self->sql, @{$self->bind} } 
 
 1;
+
+__DATA__
+@@ clear_all.sql.ep
+delete from $table

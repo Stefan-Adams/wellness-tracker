@@ -4,6 +4,8 @@ use BNT::Wellness::Model -base;
 use v5.20;
 use features qw(signatures);
 
+has config => sub { die "no database config model provide" };
+
 # "first" and "last" (based on date) value for each uid
 
 # These are the primary fetching routines for Measurements.
